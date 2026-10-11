@@ -89,3 +89,50 @@ func TestSaveSongInfersCategoryAndCreatesDirectory(t *testing.T) {
 		t.Fatalf("música não foi categorizada corretamente: %#v", songs)
 	}
 }
+
+func TestRenameSongPreservesLyricsAndRejectsDuplicateTitles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "musicas.json")
+	if err := SaveSong(path, "Cântico antigo", "Primeira estrofe\n\nSegunda estrofe"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveSong(path, "Outro cântico", "Outra letra"); err != nil {
+		t.Fatal(err)
+	}
+	if err := RenameSong(path, "Cântico antigo", "Cântico novo"); err != nil {
+		t.Fatal(err)
+	}
+	songs, err := LoadSongs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := songs["Cânticos Espirituais"]["Cântico novo"]; len(got) != 2 ||
+		got[0] != "Primeira estrofe" || got[1] != "Segunda estrofe" {
+		t.Fatalf("renomear alterou a letra: %#v", got)
+	}
+	if err := RenameSong(path, "Cântico novo", "Outro cântico"); err == nil {
+		t.Fatal("renomear para um título existente deveria falhar")
+	}
+}
+
+func TestDeleteSongRemovesOnlyTheSelectedSong(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "musicas.json")
+	if err := SaveSong(path, "Cântico removido", "Letra removida"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveSong(path, "Cântico mantido", "Letra mantida"); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteSong(path, "Cântico removido"); err != nil {
+		t.Fatal(err)
+	}
+	songs, err := LoadSongs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if findCategory(songs, "Cântico removido") != "" {
+		t.Fatal("música removida continua no arquivo")
+	}
+	if findCategory(songs, "Cântico mantido") == "" {
+		t.Fatal("música não selecionada foi removida")
+	}
+}

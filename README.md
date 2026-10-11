@@ -46,15 +46,18 @@ Sobrescritas específicas: `CULTO_BIBLE_FILE`, `CULTO_MUSIC_FILE`, `CULTO_PIX_FI
 - **↑/↓** navega; **/** filtra; **Enter** seleciona.
 - **Esc** volta; **q** volta ou sai do menu inicial.
 - **Ctrl+L** limpa a projeção do `sent` a partir de qualquer tela da TUI, sem sair dela.
-- Na visualização, **p** projeta e **g** permite digitar o número do slide e saltar diretamente no `sent`, sem sair da tela. **Esc** cancela a entrada.
+- Na visualização, **p** projeta e **g** permite digitar o número do slide e saltar diretamente no `sent`, sem sair da tela. **←/→** passam ao slide anterior/seguinte. **Esc** cancela a entrada.
 - A visualização indica o número de cada slide; use esse número depois de apertar **g**.
-- Em músicas, **e** abre o Vim/Neovim.
+- Em músicas, **e** abre o Vim/Neovim, **t** renomeia o título e **d** remove a música após confirmação digitando `REMOVER`.
+- Na leitura bíblica, **v** permite ajustar a referência. Depois de informar um livro e capítulo, basta digitar o número do versículo ou intervalo (por exemplo, `10` ou `10-12`) para continuar no mesmo capítulo.
 - No editor, use `:wq` para salvar e sair; `:q!` para descartar.
 - **Ctrl+C** encerra a interface.
 
-Na visualização de uma música, cada parte é identificada com o número do slide e o número da estrofe. Se houver uma capa automática (hinos e salmos), ela aparece como slide 01 e a primeira estrofe como slide 02. Esses rótulos são apenas informativos e não aparecem na projeção. Na tela de pré-visualização, `←` e `→` passam o sent para o slide anterior ou seguinte; `g` continua disponível para ir diretamente a um número.
+Na visualização de uma música, cada parte é identificada com o número do slide e o número da estrofe. Se houver uma capa automática (hinos e salmos), ela aparece como slide 01 e a primeira estrofe como slide 02. Esses rótulos são apenas informativos e não aparecem na projeção.
 
-A TUI não encerra processos `sent`. Ao abrir uma nova apresentação em uma sessão Hyprland, o app inicia o `sent` diretamente no monitor `HDMI-A-1`; se esse monitor não estiver conectado, mostra um erro em vez de abrir a apresentação em outra tela. Se não puder atualizar uma apresentação existente, também mostra um erro em vez de matar processos ou abrir outra instância por engano. A gravação de letras é atômica e arquivos JSON inválidos não são substituídos.
+O menu inicial fica centralizado e evita repetir ações já acessíveis por atalhos globais. Erros aparecem na prévia, mas não podem ser enviados à projeção.
+
+A TUI não encerra processos `sent`. Ao abrir uma nova apresentação em uma sessão Hyprland, o app inicia o `sent` diretamente no monitor `HDMI-A-1`; se esse monitor não estiver conectado, mostra um erro em vez de abrir a apresentação em outra tela. Se não puder atualizar uma apresentação existente, também mostra um erro em vez de matar processos ou abrir outra instância por engano. A gravação de letras é atômica e arquivos JSON inválidos não são substituídos. Renomeações e remoções de músicas preservam o restante do arquivo e são gravadas atomicamente.
 
 ## Testes
 

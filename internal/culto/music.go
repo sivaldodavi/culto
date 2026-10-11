@@ -111,6 +111,49 @@ func SaveSong(path, title, content string) error {
 		category = inferCategory(title)
 	}
 	songs[category][title] = stanzas
+	return saveSongs(path, songs)
+}
+
+func RenameSong(path, oldTitle, newTitle string) error {
+	oldTitle = strings.TrimSpace(oldTitle)
+	newTitle = strings.TrimSpace(newTitle)
+	if newTitle == "" {
+		return fmt.Errorf("o título não pode ficar vazio")
+	}
+	songs, err := LoadSongs(path)
+	if err != nil {
+		return err
+	}
+	oldCategory := findCategory(songs, oldTitle)
+	if oldCategory == "" {
+		return fmt.Errorf("a música %q não foi encontrada", oldTitle)
+	}
+	if oldTitle == newTitle {
+		return nil
+	}
+	if findCategory(songs, newTitle) != "" {
+		return fmt.Errorf("já existe uma música chamada %q", newTitle)
+	}
+	songs[oldCategory][newTitle] = songs[oldCategory][oldTitle]
+	delete(songs[oldCategory], oldTitle)
+	return saveSongs(path, songs)
+}
+
+func DeleteSong(path, title string) error {
+	title = strings.TrimSpace(title)
+	songs, err := LoadSongs(path)
+	if err != nil {
+		return err
+	}
+	category := findCategory(songs, title)
+	if category == "" {
+		return fmt.Errorf("a música %q não foi encontrada", title)
+	}
+	delete(songs[category], title)
+	return saveSongs(path, songs)
+}
+
+func saveSongs(path string, songs Songs) error {
 	data, err := json.MarshalIndent(songs, "", "  ")
 	if err != nil {
 		return fmt.Errorf("serializando músicas: %w", err)

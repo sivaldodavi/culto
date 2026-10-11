@@ -41,17 +41,22 @@ type model struct {
 	menu   list.Model
 	stack  []menuState
 
-	input       textinput.Model
-	inputPrompt string
-	inputAction string
-	preview     viewport.Model
-	content     string
-	editSong    string
-	status      string
-	jumpActive  bool
-	jumpDigits  string
-	width       int
-	height      int
+	input               textinput.Model
+	inputPrompt         string
+	inputAction         string
+	preview             viewport.Model
+	content             string
+	editSong            string
+	status              string
+	inputReturn         screen
+	lastBibleBase       string
+	lastBibleResponsive bool
+	previewBible        bool
+	previewProjectable  bool
+	jumpActive          bool
+	jumpDigits          string
+	width               int
+	height              int
 }
 
 var heading = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
@@ -60,7 +65,7 @@ var problem = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
 func New(config culto.Config) tea.Model {
 	m := &model{config: config, width: 80, height: 24}
-	m.setMenu("Culto", mainItems(), 0)
+	m.setMenu("", mainItems(), 0)
 	m.preview = viewport.New(76, 17)
 	return m
 }
@@ -73,13 +78,15 @@ func mainItems() []list.Item {
 		menuItem{"Buscar na Bíblia", "Pesquisar por palavra ou expressão", "search"},
 		menuItem{"Agenda", "Projetar os horários semanais", "agenda"},
 		menuItem{"PIX", "Abrir o QR code da igreja", "pix"},
-		menuItem{"Limpar projeção", "Limpar a tela do sent", "clear"},
-		menuItem{"Sair", "Fechar a interface", "quit"},
 	}
 }
 
+func menuWidth(width int) int {
+	return max(1, min(64, width-8))
+}
+
 func (m *model) setMenu(title string, items []list.Item, index int) {
-	m.menu = list.New(items, list.NewDefaultDelegate(), m.width, max(1, m.height-6))
+	m.menu = list.New(items, list.NewDefaultDelegate(), menuWidth(m.width), max(1, m.height-6))
 	m.menu.Title = title
 	m.menu.SetShowStatusBar(false)
 	m.menu.SetShowHelp(false)
@@ -101,7 +108,7 @@ func (m *model) pushMenu(title string, items []list.Item) {
 
 func (m *model) popMenu() {
 	if len(m.stack) == 0 {
-		m.setMenu("Culto", mainItems(), 0)
+		m.setMenu("", mainItems(), 0)
 		return
 	}
 	state := m.stack[len(m.stack)-1]
@@ -111,10 +118,17 @@ func (m *model) popMenu() {
 }
 
 func (m *model) showPreview(content string) {
+	m.showPreviewContent(content, true)
+	m.previewBible = false
+	m.editSong = ""
+}
+
+func (m *model) showPreviewContent(content string, projectable bool) {
 	m.content = content
 	m.preview.SetContent(culto.NumberedSlidesPreview(content))
 	m.preview.GotoTop()
 	m.screen = previewScreen
+	m.previewProjectable = projectable
 	m.status = ""
 }
 
@@ -123,14 +137,19 @@ func (m *model) showSongPreview(title string, stanzas []string) {
 	m.preview.SetContent(culto.NumberedSongPreview(title, stanzas))
 	m.preview.GotoTop()
 	m.screen = previewScreen
+	m.previewProjectable = true
+	m.previewBible = false
 	m.status = ""
 }
 
 func (m *model) showError(err error) {
-	m.showPreview("Erro: " + err.Error())
+	m.showPreviewContent("Erro: "+err.Error(), false)
+	m.previewBible = false
+	m.editSong = ""
 }
 
 func (m *model) ask(prompt, action string) {
+	m.inputReturn = m.screen
 	m.input = textinput.New()
 	m.input.Prompt = "> "
 	m.input.CharLimit = 240
@@ -138,6 +157,23 @@ func (m *model) ask(prompt, action string) {
 	m.inputPrompt, m.inputAction = prompt, action
 	m.screen = inputScreen
 	m.status = ""
+}
+
+func (m *model) askBibleReference(action string) {
+	prompt := "Referência bíblica (ex.: Romanos 1:10)"
+	if m.lastBibleBase != "" {
+		prompt = fmt.Sprintf("Referência ou versículo de %s (ex.: 10 ou 10-12)", m.lastBibleBase)
+	}
+	m.ask(prompt, action)
+}
+
+func (m *model) cancelInput() {
+	if m.inputReturn == previewScreen {
+		m.screen = previewScreen
+		m.status = ""
+		return
+	}
+	m.popMenu()
 }
 
 func (m *model) Init() tea.Cmd { return textinput.Blink }
@@ -149,7 +185,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.menu.SetSize(msg.Width, max(1, msg.Height-6))
+		m.menu.SetSize(menuWidth(msg.Width), max(1, msg.Height-6))
 		m.preview.Width, m.preview.Height = max(1, msg.Width-4), max(1, msg.Height-8)
 		return m, nil
 	case tea.KeyMsg:
@@ -196,9 +232,6 @@ func (m *model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			item, ok := m.menu.SelectedItem().(menuItem)
 			if ok {
-				if item.action == "quit" {
-					return m, tea.Quit
-				}
 				m.activate(item.action)
 			}
 			return m, nil
@@ -221,7 +254,6 @@ func (m *model) activate(action string) {
 			menuItem{"Ofertório", "", "text:OFERTÓRIO"},
 			menuItem{"Oração final", "", "text:ORAÇÃO FINAL"},
 			menuItem{"Boas-vindas", "", "text:BOAS-VINDAS"},
-			menuItem{"Agenda", "", "agenda"},
 		}
 		m.pushMenu("Liturgia · Esc volta", items)
 	case "songs":
@@ -241,18 +273,17 @@ func (m *model) activate(action string) {
 		} else {
 			m.status = "Imagem PIX aberta."
 		}
-	case "clear":
-		if err := culto.ClearPresentation(m.config); err != nil {
-			m.status = err.Error()
-		} else {
-			m.status = "Projeção limpa."
-		}
 	default:
 		switch {
 		case strings.HasPrefix(action, "text:"):
 			m.pushPreview(strings.TrimPrefix(action, "text:"))
 		case strings.HasPrefix(action, "bible:"):
-			m.pushAsk("Referência (ex.: João 3:16-18)", strings.TrimPrefix(action, "bible:"))
+			m.stack = append(m.stack, menuState{
+				title: m.menu.Title,
+				items: append([]list.Item(nil), m.menu.Items()...),
+				index: m.menu.Index(),
+			})
+			m.askBibleReference(strings.TrimPrefix(action, "bible:"))
 		case action == "song:add":
 			m.pushAsk("Título da nova música", "song:new")
 		case strings.HasPrefix(action, "song:"):
@@ -287,14 +318,39 @@ func (m *model) openSongs() {
 		m.showError(err)
 		return
 	}
+	items := songItems(songs)
+	m.pushMenu("Músicas · Esc volta", items)
+}
+
+func songItems(songs culto.Songs) []list.Item {
 	items := []list.Item{
 		menuItem{"＋ Adicionar música", "Criar uma letra", "song:add"},
 		menuItem{"← Voltar", "", "back"},
 	}
 	for _, title := range culto.SongTitles(songs) {
-		items = append(items, menuItem{title, "Enter visualiza · p projeta · e edita", "song:" + title})
+		items = append(items, menuItem{title, "Enter abre; t renomeia e d remove na prévia", "song:" + title})
 	}
-	m.pushMenu("Músicas · Esc volta", items)
+	return items
+}
+
+func (m *model) refreshSongsMenu(selectedTitle string) {
+	songs, err := culto.LoadSongs(m.config.MusicFile)
+	if err != nil {
+		m.status = err.Error()
+		return
+	}
+	items := songItems(songs)
+	index := 0
+	for i, item := range items {
+		if song, ok := item.(menuItem); ok && song.title == selectedTitle {
+			index = i
+			break
+		}
+	}
+	if selectedTitle == "" && len(items) > 2 {
+		index = 2
+	}
+	m.setMenu("Músicas · Esc volta", items, index)
 }
 
 func (m *model) openSong(title string) {
@@ -322,7 +378,7 @@ func (m *model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "esc":
-			m.popMenu()
+			m.cancelInput()
 			return m, nil
 		case "enter":
 			value := strings.TrimSpace(m.input.Value())
@@ -339,6 +395,31 @@ func (m *model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "song:new":
 				m.editSong = value
 				return m, m.openEditor(value, nil)
+			case "song:rename":
+				oldTitle := m.editSong
+				if err := culto.RenameSong(m.config.MusicFile, oldTitle, value); err != nil {
+					m.status = err.Error()
+					return m, nil
+				}
+				m.editSong = ""
+				m.popMenu()
+				m.refreshSongsMenu(value)
+				m.status = fmt.Sprintf("Música renomeada para %q.", value)
+			case "song:delete":
+				if value != "REMOVER" {
+					m.cancelInput()
+					m.status = "Remoção cancelada."
+					return m, nil
+				}
+				title := m.editSong
+				if err := culto.DeleteSong(m.config.MusicFile, title); err != nil {
+					m.status = err.Error()
+					return m, nil
+				}
+				m.editSong = ""
+				m.popMenu()
+				m.refreshSongsMenu("")
+				m.status = fmt.Sprintf("Música %q removida.", title)
 			}
 			return m, nil
 		}
@@ -354,12 +435,50 @@ func (m *model) readBible(reference string, responsive bool) {
 		m.showError(err)
 		return
 	}
+	reference = resolveBibleReference(reference, m.lastBibleBase)
 	verses, label, err := culto.ParseReference(reference, books)
 	if err != nil {
 		m.showError(err)
 		return
 	}
 	m.showPreview(culto.RenderBible(verses, label, false, responsive))
+	m.previewBible = true
+	m.lastBibleResponsive = responsive
+	m.lastBibleBase = ""
+	first := verses[0]
+	sameChapter := true
+	for _, verse := range verses[1:] {
+		if verse.Book != first.Book || verse.Chapter != first.Chapter {
+			sameChapter = false
+			break
+		}
+	}
+	if sameChapter {
+		m.lastBibleBase = fmt.Sprintf("%s %d", first.Book, first.Chapter)
+	}
+}
+
+func resolveBibleReference(reference, base string) string {
+	reference = strings.TrimSpace(reference)
+	relative := strings.TrimPrefix(reference, ":")
+	if base != "" && isVerseRange(relative) {
+		return base + ":" + relative
+	}
+	return reference
+}
+
+func isVerseRange(value string) bool {
+	parts := strings.Split(value, "-")
+	if len(parts) > 2 {
+		return false
+	}
+	for _, part := range parts {
+		number, err := strconv.Atoi(part)
+		if err != nil || number < 1 {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *model) searchBible(query string) {
@@ -413,7 +532,20 @@ func (m *model) updatePreview(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "Slide " + directionName + " enviado ao sent."
 			}
 			return m, nil
+		case "v":
+			if m.previewBible {
+				action := "read"
+				if m.lastBibleResponsive {
+					action = "responsive"
+				}
+				m.askBibleReference(action)
+			}
+			return m, nil
 		case "p":
+			if !m.previewProjectable {
+				m.status = "Esta mensagem não pode ser projetada."
+				return m, nil
+			}
 			if err := culto.Present(m.config, m.content); err != nil {
 				m.status = err.Error()
 			} else {
@@ -432,6 +564,14 @@ func (m *model) updatePreview(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, m.openEditor(m.editSong, stanzas)
 					}
 				}
+			}
+		case "t":
+			if m.editSong != "" {
+				m.ask("Novo título para "+m.editSong, "song:rename")
+			}
+		case "d":
+			if m.editSong != "" {
+				m.ask("Digite REMOVER para excluir "+m.editSong, "song:delete")
 			}
 		}
 	}
@@ -476,11 +616,13 @@ func (m *model) updateSlideJump(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() string {
-	header := heading.Render("CULTO") + "  " + muted.Render("liturgia e projeção")
+	frameWidth := max(1, m.width-4)
+	header := lipgloss.PlaceHorizontal(frameWidth, lipgloss.Center,
+		heading.Render("CULTO")+"  "+muted.Render("liturgia e projeção"))
 	var body string
 	switch m.screen {
 	case menuScreen:
-		body = m.menu.View()
+		body = lipgloss.PlaceHorizontal(frameWidth, lipgloss.Center, m.menu.View())
 	case inputScreen:
 		body = "\n" + m.inputPrompt + "\n\n" + m.input.View()
 	case previewScreen:
@@ -490,10 +632,13 @@ func (m *model) View() string {
 		body += "\n\n" + muted.Render("Ir para slide: "+m.jumpDigits+"▏")
 	}
 	if m.status != "" {
-		body += "\n" + problem.Render(m.status)
+		body += "\n" + problem.Width(frameWidth).Align(lipgloss.Center).Render(m.status)
 	}
-	return lipgloss.NewStyle().Padding(1, 2).Render(
-		header + "\n\n" + body + "\n\n" + muted.Render(m.help()))
+	if m.screen == inputScreen || m.screen == menuScreen {
+		body = lipgloss.PlaceHorizontal(frameWidth, lipgloss.Center, body)
+	}
+	help := muted.Width(frameWidth).Align(lipgloss.Center).Render(m.help())
+	return lipgloss.NewStyle().Padding(1, 2).Render(header + "\n\n" + body + "\n\n" + help)
 }
 
 func (m *model) help() string {
@@ -507,7 +652,17 @@ func (m *model) help() string {
 		if m.jumpActive {
 			return "Digite o número · Enter ir · Backspace apagar · Esc cancelar" + global
 		}
-		return "←/→ slide anterior/seguinte · ↑/↓ rolar · p projetar · g ir para slide · e editar música · Esc voltar" + global
+		actions := "←/→ slide anterior/seguinte · ↑/↓ rolar · g ir para slide"
+		if m.previewProjectable {
+			actions += " · p projetar"
+		}
+		if m.previewBible {
+			actions += " · v ajustar referência"
+		}
+		if m.editSong != "" {
+			actions += " · e editar letra · t renomear · d remover"
+		}
+		return actions + " · Esc voltar" + global
 	default:
 		return ""
 	}

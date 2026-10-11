@@ -1,6 +1,8 @@
 package app
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,8 +31,31 @@ func TestMainMenuAndLiturgiaNavigation(t *testing.T) {
 		t.Fatal("Esc não voltou ao submenu de liturgia")
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if m.menu.Title != "Culto" || len(m.stack) != 0 {
+	if m.menu.Title != "" || len(m.stack) != 0 {
 		t.Fatal("Esc não voltou ao menu principal")
+	}
+}
+
+func TestMainMenuOmitsDuplicateActionsAndLiturgiaAgenda(t *testing.T) {
+	agendaCount := 0
+	for _, item := range mainItems() {
+		entry := item.(menuItem)
+		if entry.action == "clear" || entry.action == "quit" {
+			t.Fatalf("ação redundante na lista inicial: %#v", entry)
+		}
+		if entry.action == "agenda" {
+			agendaCount++
+		}
+	}
+	if agendaCount != 1 {
+		t.Fatalf("agenda deve aparecer uma vez no menu inicial; apareceu %d vezes", agendaCount)
+	}
+	m := New(culto.Config{}).(*model)
+	m.activate("liturgia")
+	for _, item := range m.menu.Items() {
+		if entry := item.(menuItem); entry.action == "agenda" {
+			t.Fatal("agenda aparece duplicada dentro de Liturgia")
+		}
 	}
 }
 
@@ -108,6 +133,66 @@ func TestSongListHasAddAndBackActions(t *testing.T) {
 	}
 }
 
+func TestSongCanBeRenamedFromPreview(t *testing.T) {
+	musicFile := filepath.Join(t.TempDir(), "musicas.json")
+	if err := culto.SaveSong(musicFile, "Título antigo", "Letra preservada"); err != nil {
+		t.Fatal(err)
+	}
+	m := New(culto.Config{MusicFile: musicFile}).(*model)
+	m.openSongs()
+	m.openSong("Título antigo")
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	m.input.SetValue("Título novo")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	songs, err := culto.LoadSongs(musicFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := songs["Cânticos Espirituais"]["Título novo"]; len(got) != 1 || got[0] != "Letra preservada" {
+		t.Fatalf("música renomeada incorretamente: %#v", got)
+	}
+	if m.screen != menuScreen || m.menu.Index() < 2 {
+		t.Fatal("após renomear, a lista não selecionou a música atualizada")
+	}
+}
+
+func TestSongDeletionRequiresExplicitConfirmation(t *testing.T) {
+	musicFile := filepath.Join(t.TempDir(), "musicas.json")
+	if err := culto.SaveSong(musicFile, "Título a remover", "Letra"); err != nil {
+		t.Fatal(err)
+	}
+	m := New(culto.Config{MusicFile: musicFile}).(*model)
+	m.openSongs()
+	m.openSong("Título a remover")
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m.input.SetValue("não")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.screen != previewScreen || m.status != "Remoção cancelada." {
+		t.Fatal("confirmação incorreta não cancelou a remoção")
+	}
+	songs, err := culto.LoadSongs(musicFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(culto.SongTitles(songs)) != 1 {
+		t.Fatal("música foi removida sem confirmação correta")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m.input.SetValue("REMOVER")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	songs, err = culto.LoadSongs(musicFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(culto.SongTitles(songs)) != 0 {
+		t.Fatalf("música ainda existe depois de confirmada a remoção: %#v", songs)
+	}
+	if m.screen != menuScreen {
+		t.Fatal("após remover, a aplicação não voltou à lista de músicas")
+	}
+}
+
 func TestSlideJumpStaysOnPreviewAndSendsNumberToSent(t *testing.T) {
 	dir := t.TempDir()
 	argsFile := filepath.Join(dir, "xdotool-args")
@@ -140,6 +225,48 @@ func TestSlideJumpStaysOnPreviewAndSendsNumberToSent(t *testing.T) {
 	want := "key\n--window\n4242\n--clearmodifiers\ng\n1\n2\nReturn\n"
 	if string(got) != want {
 		t.Fatalf("sequência enviada ao sent:\n%s\nesperado:\n%s", got, want)
+	}
+}
+
+func TestBibleReferenceCanReuseLastBookAndChapter(t *testing.T) {
+	bibleFile := filepath.Join(t.TempDir(), "biblia.json")
+	data, err := json.Marshal([]culto.BibleBook{{
+		Name:     "Romanos",
+		Abbrev:   "Rm",
+		Chapters: [][]string{{"Versículo um.", "Versículo dois.", "Versículo três."}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bibleFile, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := New(culto.Config{BibleFile: bibleFile}).(*model)
+	m.readBible("Romanos 1", false)
+	if m.lastBibleBase != "Romanos 1" || !m.previewBible {
+		t.Fatalf("contexto bíblico não foi armazenado: base=%q preview=%v", m.lastBibleBase, m.previewBible)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	if !strings.Contains(m.inputPrompt, "Romanos 1") {
+		t.Fatalf("prompt não informa o capítulo atual: %q", m.inputPrompt)
+	}
+	m.input.SetValue("2")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.screen != previewScreen || !strings.Contains(m.content, "Romanos 1:2") ||
+		!strings.Contains(m.content, "2. Versículo dois.") {
+		t.Fatalf("referência relativa não selecionou o versículo correto: %q", m.content)
+	}
+	if got := resolveBibleReference("10-12", "Romanos 1"); got != "Romanos 1:10-12" {
+		t.Fatalf("intervalo relativo resolvido como %q", got)
+	}
+}
+
+func TestPreviewErrorsCannotBeProjected(t *testing.T) {
+	m := New(culto.Config{}).(*model)
+	m.showError(fmt.Errorf("erro de teste"))
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	if m.previewProjectable || m.status != "Esta mensagem não pode ser projetada." {
+		t.Fatalf("erro ficou projetável: projectable=%v status=%q", m.previewProjectable, m.status)
 	}
 }
 
