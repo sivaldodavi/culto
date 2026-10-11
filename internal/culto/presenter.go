@@ -1,6 +1,7 @@
 package culto
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -172,7 +173,55 @@ func refreshOrStart(path string, startIfMissing bool) error {
 	if err != nil {
 		return fmt.Errorf("sent não está aberto e não foi encontrado no PATH")
 	}
-	cmd := exec.Command(sent, path)
+	return startSent(sent, path)
+}
+
+func startSent(sent, slideFile string) error {
+	if os.Getenv("HYPRLAND_INSTANCE_SIGNATURE") == "" {
+		return startDetached(sent, slideFile)
+	}
+
+	hyprctl, err := exec.LookPath("hyprctl")
+	if err != nil {
+		return fmt.Errorf("hyprctl não foi encontrado; não é possível iniciar sent no monitor HDMI-A-1")
+	}
+	output, err := exec.Command(hyprctl, "monitors", "-j").Output()
+	if err != nil {
+		return fmt.Errorf("não foi possível consultar os monitores do Hyprland: %w", err)
+	}
+	var monitors []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(output, &monitors); err != nil {
+		return fmt.Errorf("resposta inválida ao consultar monitores do Hyprland: %w", err)
+	}
+	found := false
+	for _, monitor := range monitors {
+		if monitor.Name == "HDMI-A-1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("o monitor HDMI-A-1 não está conectado; sent não foi iniciado")
+	}
+
+	command := shellQuote(sent) + " " + shellQuote(slideFile)
+	dispatch := fmt.Sprintf("hl.dsp.exec_cmd(%s, { monitor = %s })",
+		strconv.Quote(command), strconv.Quote("HDMI-A-1"))
+	output, err = exec.Command(hyprctl, "dispatch", dispatch).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("não foi possível iniciar sent no monitor HDMI-A-1: %w: %s",
+			err, strings.TrimSpace(string(output)))
+	}
+	if response := strings.TrimSpace(string(output)); response != "ok" {
+		return fmt.Errorf("Hyprland não confirmou a abertura do sent no monitor HDMI-A-1: %s", response)
+	}
+	return nil
+}
+
+func startDetached(sent, slideFile string) error {
+	cmd := exec.Command(sent, slideFile)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("iniciando sent: %w", err)
 	}
@@ -180,6 +229,10 @@ func refreshOrStart(path string, startIfMissing bool) error {
 		return fmt.Errorf("liberando processo do sent: %w", err)
 	}
 	return nil
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func OpenPix(path string) error {

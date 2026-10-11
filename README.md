@@ -52,9 +52,9 @@ Sobrescritas específicas: `CULTO_BIBLE_FILE`, `CULTO_MUSIC_FILE`, `CULTO_PIX_FI
 - No editor, use `:wq` para salvar e sair; `:q!` para descartar.
 - **Ctrl+C** encerra a interface.
 
-Na visualização de uma música, cada parte é identificada com o número do slide e o número da estrofe. Se houver uma capa automática (hinos e salmos), ela aparece como slide 01 e a primeira estrofe como slide 02. Esses rótulos são apenas informativos e não aparecem na projeção.
+Na visualização de uma música, cada parte é identificada com o número do slide e o número da estrofe. Se houver uma capa automática (hinos e salmos), ela aparece como slide 01 e a primeira estrofe como slide 02. Esses rótulos são apenas informativos e não aparecem na projeção. Na tela de pré-visualização, `←` e `→` passam o sent para o slide anterior ou seguinte; `g` continua disponível para ir diretamente a um número.
 
-A TUI não encerra processos `sent`. Se não puder atualizar a apresentação existente, exibe um erro em vez de matar processos ou abrir outra instância por engano. A gravação de letras é atômica e arquivos JSON inválidos não são substituídos.
+A TUI não encerra processos `sent`. Ao abrir uma nova apresentação em uma sessão Hyprland, o app inicia o `sent` diretamente no monitor `HDMI-A-1`; se esse monitor não estiver conectado, mostra um erro em vez de abrir a apresentação em outra tela. Se não puder atualizar uma apresentação existente, também mostra um erro em vez de matar processos ou abrir outra instância por engano. A gravação de letras é atômica e arquivos JSON inválidos não são substituídos.
 
 ## Testes
 
