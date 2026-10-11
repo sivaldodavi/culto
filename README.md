@@ -45,8 +45,8 @@ Sobrescritas específicas: `CULTO_BIBLE_FILE`, `CULTO_MUSIC_FILE`, `CULTO_PIX_FI
 
 - **↑/↓** navega; **/** filtra; **Enter** seleciona.
 - **Esc** volta; **q** volta ou sai do menu inicial.
-- Na visualização, **p** projeta; em músicas, **e** edita.
-- No editor, **Ctrl+S** salva e **Esc** descarta.
+- Na visualização, **p** projeta; em músicas, **e** abre o Vim/Neovim.
+- No editor, use `:wq` para salvar e sair; `:q!` para descartar.
 - **Ctrl+C** encerra a interface.
 
 Na visualização de uma música, cada parte é identificada com o número do slide e o número da estrofe. Se houver uma capa automática (hinos e salmos), ela aparece como slide 01 e a primeira estrofe como slide 02. Esses rótulos são apenas informativos e não aparecem na projeção.

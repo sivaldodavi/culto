@@ -1,6 +1,8 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,30 +34,60 @@ func TestMainMenuAndLiturgiaNavigation(t *testing.T) {
 	}
 }
 
-func TestCreateSongThroughEditor(t *testing.T) {
-	musicFile := t.TempDir() + "/musicas.json"
+func TestSongEditorContentKeepsLyricsAndRemovesOnlyItsTitle(t *testing.T) {
+	title := "Cântico de teste"
+	original := songEditorText(title, []string{"Primeira estrofe", "Segunda estrofe"})
+	want := "Primeira estrofe\n\nSegunda estrofe"
+	if got := songEditorLyrics(original, title); got != want {
+		t.Fatalf("letra extraída = %q, esperado %q", got, want)
+	}
+
+	content := "# Cântico de teste\n\n# Cabeçalho da estrofe\nletra"
+	if got := songEditorLyrics(content, title); got != "# Cabeçalho da estrofe\nletra" {
+		t.Fatalf("cabeçalho Markdown da letra foi removido: %q", got)
+	}
+}
+
+func TestSongEditorStartsWithTitleAndEmptyLyrics(t *testing.T) {
+	if got, want := songEditorText("Nova música", nil), "# Nova música\n\n"; got != want {
+		t.Fatalf("conteúdo inicial = %q, esperado %q", got, want)
+	}
+}
+
+func TestFinishEditorSavesLyricsAndReturnsToSongList(t *testing.T) {
+	title := "Cântico existente"
+	musicFile := filepath.Join(t.TempDir(), "musicas.json")
+	if err := culto.SaveSong(musicFile, title, "Letra antiga"); err != nil {
+		t.Fatal(err)
+	}
+
 	m := New(culto.Config{MusicFile: musicFile}).(*model)
-	m.activate("songs")
-	m.activate("song:add")
-	if m.screen != inputScreen {
-		t.Fatal("formulário de título não abriu")
+	m.openSongs()
+	m.openSong(title)
+
+	original := songEditorText(title, []string{"Letra antiga"})
+	edited := songEditorText(title, []string{"Primeira estrofe", "Segunda estrofe"})
+	editFile := filepath.Join(t.TempDir(), "culto.md")
+	if err := os.WriteFile(editFile, []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	m.input.SetValue("Hino novo")
-	m.updateInput(tea.KeyMsg{Type: tea.KeyEnter})
-	if m.screen != editorScreen {
-		t.Fatal("editor da música não abriu")
-	}
-	m.textarea.SetValue("Primeira estrofe\n\nSegunda estrofe")
-	m.updateEditor(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m.finishEditor(editorFinishedMsg{
+		title: title, path: editFile, original: original,
+	})
+
 	if m.screen != menuScreen || m.menu.Title != "Músicas · Esc volta" {
-		t.Fatal("após salvar, a aplicação não voltou à lista de músicas")
+		t.Fatal("após editar, a aplicação não voltou à lista de músicas")
 	}
 	songs, err := culto.LoadSongs(musicFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(songs["Cânticos Espirituais"]["Hino novo"]) != 2 {
-		t.Fatalf("estrofes não salvas: %#v", songs)
+	if got := songs["Cânticos Espirituais"][title]; len(got) != 2 ||
+		got[0] != "Primeira estrofe" || got[1] != "Segunda estrofe" {
+		t.Fatalf("letra editada não foi salva: %#v", got)
+	}
+	if _, err := os.Stat(editFile); !os.IsNotExist(err) {
+		t.Fatal("arquivo temporário do editor não foi removido")
 	}
 }
 

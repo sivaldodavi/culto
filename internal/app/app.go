@@ -6,7 +6,6 @@ import (
 
 	"culto/internal/culto"
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,7 +18,6 @@ const (
 	menuScreen screen = iota
 	inputScreen
 	previewScreen
-	editorScreen
 )
 
 type menuItem struct {
@@ -48,7 +46,6 @@ type model struct {
 	preview     viewport.Model
 	content     string
 	editSong    string
-	textarea    textarea.Model
 	status      string
 	width       int
 	height      int
@@ -140,29 +137,17 @@ func (m *model) ask(prompt, action string) {
 	m.status = ""
 }
 
-func (m *model) edit(title, content string) {
-	m.editSong = title
-	m.textarea = textarea.New()
-	m.textarea.Placeholder = "Separe as estrofes com uma linha em branco."
-	m.textarea.SetValue(content)
-	m.textarea.Focus()
-	m.textarea.SetWidth(max(20, m.width-6))
-	m.textarea.SetHeight(max(5, m.height-9))
-	m.screen = editorScreen
-}
-
 func (m *model) Init() tea.Cmd { return textinput.Blink }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if finished, ok := msg.(editorFinishedMsg); ok {
+		return m, m.finishEditor(finished)
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.menu.SetSize(msg.Width, max(1, msg.Height-6))
 		m.preview.Width, m.preview.Height = max(1, msg.Width-4), max(1, msg.Height-8)
-		if m.screen == editorScreen {
-			m.textarea.SetWidth(max(20, msg.Width-6))
-			m.textarea.SetHeight(max(5, msg.Height-9))
-		}
 		return m, nil
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
@@ -176,8 +161,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateInput(msg)
 	case previewScreen:
 		return m.updatePreview(msg)
-	case editorScreen:
-		return m.updateEditor(msg)
 	default:
 		return m, nil
 	}
@@ -341,7 +324,8 @@ func (m *model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "search":
 				m.searchBible(value)
 			case "song:new":
-				m.edit(value, "")
+				m.editSong = value
+				return m, m.openEditor(value, nil)
 			}
 			return m, nil
 		}
@@ -411,8 +395,7 @@ func (m *model) updatePreview(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				for _, category := range songs {
 					if stanzas, ok := category[m.editSong]; ok {
-						m.edit(m.editSong, strings.Join(stanzas, "\n\n"))
-						return m, nil
+						return m, m.openEditor(m.editSong, stanzas)
 					}
 				}
 			}
@@ -420,30 +403,6 @@ func (m *model) updatePreview(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.preview, cmd = m.preview.Update(msg)
-	return m, cmd
-}
-
-func (m *model) updateEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "esc":
-			m.editSong = ""
-			m.popMenu()
-			return m, nil
-		case "ctrl+s":
-			if err := culto.SaveSong(m.config.MusicFile, m.editSong, m.textarea.Value()); err != nil {
-				m.status = "Erro ao salvar: " + err.Error()
-				return m, nil
-			}
-			title := m.editSong
-			m.editSong = ""
-			m.popMenu()
-			m.status = fmt.Sprintf("Música %q salva.", title)
-			return m, nil
-		}
-	}
-	var cmd tea.Cmd
-	m.textarea, cmd = m.textarea.Update(msg)
 	return m, cmd
 }
 
@@ -457,8 +416,6 @@ func (m *model) View() string {
 		body = "\n" + m.inputPrompt + "\n\n" + m.input.View()
 	case previewScreen:
 		body = m.preview.View()
-	case editorScreen:
-		body = fmt.Sprintf("Editando: %s\n\n%s", m.editSong, m.textarea.View())
 	}
 	if m.status != "" {
 		body += "\n" + problem.Render(m.status)
@@ -475,8 +432,6 @@ func (m *model) help() string {
 		return "Enter confirmar · Esc cancelar"
 	case previewScreen:
 		return "↑/↓ rolar · p projetar · e editar música · Esc voltar"
-	case editorScreen:
-		return "Ctrl+S salvar · Esc descartar"
 	default:
 		return ""
 	}
