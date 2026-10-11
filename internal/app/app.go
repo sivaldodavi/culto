@@ -156,6 +156,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
+		if msg.String() == "ctrl+l" {
+			m.jumpActive = false
+			m.jumpDigits = ""
+			if err := culto.ClearPresentation(m.config); err != nil {
+				m.status = err.Error()
+			} else {
+				m.status = "Projeção limpa."
+			}
+			return m, nil
+		}
 	}
 	switch m.screen {
 	case menuScreen:
@@ -474,16 +484,17 @@ func (m *model) View() string {
 }
 
 func (m *model) help() string {
+	global := " · Ctrl+L limpar projeção"
 	switch m.screen {
 	case menuScreen:
-		return "↑/↓ navegar · / filtrar · Enter abrir · Esc voltar · q sair"
+		return "↑/↓ navegar · / filtrar · Enter abrir · Esc voltar · q sair" + global
 	case inputScreen:
-		return "Enter confirmar · Esc cancelar"
+		return "Enter confirmar · Esc cancelar" + global
 	case previewScreen:
 		if m.jumpActive {
-			return "Digite o número · Enter ir · Backspace apagar · Esc cancelar"
+			return "Digite o número · Enter ir · Backspace apagar · Esc cancelar" + global
 		}
-		return "↑/↓ rolar · p projetar · g ir para slide · e editar música · Esc voltar"
+		return "↑/↓ rolar · p projetar · g ir para slide · e editar música · Esc voltar" + global
 	default:
 		return ""
 	}

@@ -153,3 +153,55 @@ func TestSlideJumpCanBeCancelledWithoutLeavingPreview(t *testing.T) {
 		t.Fatal("cancelar o salto alterou a tela ou manteve o número digitado")
 	}
 }
+
+func TestCtrlLClearsProjectionWithoutLeavingCurrentScreen(t *testing.T) {
+	for _, screenName := range []string{"menu", "input", "preview"} {
+		t.Run(screenName, func(t *testing.T) {
+			dir := t.TempDir()
+			xdotool := filepath.Join(dir, "xdotool")
+			script := "#!/bin/sh\n" +
+				"if [ \"$1\" = search ]; then printf '4242\\n'; exit 0; fi\n" +
+				"exit 0\n"
+			if err := os.WriteFile(xdotool, []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", dir)
+
+			sentFile := filepath.Join(dir, "sent-slides")
+			if err := os.WriteFile(sentFile, []byte("SLIDE 1\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			m := New(culto.Config{SentFile: sentFile}).(*model)
+			switch screenName {
+			case "input":
+				m.ask("Buscar", "search")
+				m.input.SetValue("termo")
+			case "preview":
+				m.showPreview("Conteúdo atual")
+			}
+			beforeScreen := m.screen
+
+			m.Update(tea.KeyMsg{Type: tea.KeyCtrlL})
+
+			if m.screen != beforeScreen {
+				t.Fatalf("atalho mudou de tela: %v -> %v", beforeScreen, m.screen)
+			}
+			if m.status != "Projeção limpa." {
+				t.Fatalf("status inesperado: %q", m.status)
+			}
+			got, err := os.ReadFile(sentFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != " \n" {
+				t.Fatalf("arquivo da projeção não foi limpo: %q", got)
+			}
+			if screenName == "input" && m.input.Value() != "termo" {
+				t.Fatalf("texto do campo foi perdido: %q", m.input.Value())
+			}
+			if screenName == "preview" && m.content != "Conteúdo atual" {
+				t.Fatalf("conteúdo da tela foi perdido: %q", m.content)
+			}
+		})
+	}
+}

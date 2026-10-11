@@ -45,6 +45,7 @@ Sobrescritas específicas: `CULTO_BIBLE_FILE`, `CULTO_MUSIC_FILE`, `CULTO_PIX_FI
 
 - **↑/↓** navega; **/** filtra; **Enter** seleciona.
 - **Esc** volta; **q** volta ou sai do menu inicial.
+- **Ctrl+L** limpa a projeção do `sent` a partir de qualquer tela da TUI, sem sair dela.
 - Na visualização, **p** projeta e **g** permite digitar o número do slide e saltar diretamente no `sent`, sem sair da tela. **Esc** cancela a entrada.
 - A visualização indica o número de cada slide; use esse número depois de apertar **g**.
 - Em músicas, **e** abre o Vim/Neovim.
