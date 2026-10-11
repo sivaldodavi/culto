@@ -24,6 +24,38 @@ func ClearPresentation(config Config) error {
 	return refreshOrStart(config.SentFile, false)
 }
 
+func JumpToSlide(slide int) error {
+	if slide < 1 {
+		return fmt.Errorf("o número do slide deve ser maior que zero")
+	}
+	xdotool, err := exec.LookPath("xdotool")
+	if err != nil {
+		return fmt.Errorf("xdotool não foi encontrado")
+	}
+	output, err := exec.Command(xdotool, "search", "--onlyvisible", "--class", "sent").Output()
+	if err != nil {
+		return fmt.Errorf("não encontrei uma janela visível do sent")
+	}
+	windows := strings.Fields(string(output))
+	if len(windows) == 0 {
+		return fmt.Errorf("não encontrei uma janela visível do sent")
+	}
+
+	window := windows[0]
+	if _, err := strconv.ParseUint(window, 10, 64); err != nil {
+		return fmt.Errorf("o identificador da janela do sent é inválido")
+	}
+	args := []string{"key", "--window", window, "--clearmodifiers", "g"}
+	for _, digit := range strconv.Itoa(slide) {
+		args = append(args, string(digit))
+	}
+	args = append(args, "Return")
+	if err := exec.Command(xdotool, args...).Run(); err != nil {
+		return fmt.Errorf("não foi possível enviar o salto para o slide %d: %w", slide, err)
+	}
+	return nil
+}
+
 func formatSlides(content string) string {
 	paragraphs := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n\n")
 	var slides []string
@@ -38,6 +70,19 @@ func formatSlides(content string) string {
 		}
 	}
 	return strings.Join(slides, "\n\n") + "\n"
+}
+
+func NumberedSlidesPreview(content string) string {
+	formatted := strings.TrimSpace(formatSlides(content))
+	if formatted == "" {
+		return ""
+	}
+	slides := strings.Split(formatted, "\n\n")
+	numbered := make([]string, len(slides))
+	for i, slide := range slides {
+		numbered[i] = fmt.Sprintf("SLIDE %02d\n%s", i+1, slide)
+	}
+	return strings.Join(numbered, "\n\n")
 }
 
 func wrap(text string, width int) []string {

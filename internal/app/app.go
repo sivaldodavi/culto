@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"culto/internal/culto"
@@ -47,6 +48,8 @@ type model struct {
 	content     string
 	editSong    string
 	status      string
+	jumpActive  bool
+	jumpDigits  string
 	width       int
 	height      int
 }
@@ -109,7 +112,7 @@ func (m *model) popMenu() {
 
 func (m *model) showPreview(content string) {
 	m.content = content
-	m.preview.SetContent(content)
+	m.preview.SetContent(culto.NumberedSlidesPreview(content))
 	m.preview.GotoTop()
 	m.screen = previewScreen
 	m.status = ""
@@ -374,10 +377,18 @@ func (m *model) searchBible(query string) {
 
 func (m *model) updatePreview(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
+		if m.jumpActive {
+			return m.updateSlideJump(key)
+		}
 		switch key.String() {
 		case "esc", "q":
 			m.editSong = ""
 			m.popMenu()
+			return m, nil
+		case "g":
+			m.jumpActive = true
+			m.jumpDigits = ""
+			m.status = ""
 			return m, nil
 		case "p":
 			if err := culto.Present(m.config, m.content); err != nil {
@@ -406,6 +417,41 @@ func (m *model) updatePreview(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m *model) updateSlideJump(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	value := key.String()
+	switch value {
+	case "esc":
+		m.jumpActive = false
+		m.jumpDigits = ""
+		m.status = ""
+	case "enter":
+		if m.jumpDigits == "" {
+			m.status = "Digite o número do slide."
+			return m, nil
+		}
+		slide, err := strconv.Atoi(m.jumpDigits)
+		if err != nil {
+			m.status = "Número de slide inválido."
+		} else if err := culto.JumpToSlide(slide); err != nil {
+			m.status = err.Error()
+		} else {
+			m.status = fmt.Sprintf("Enviado ao sent: slide %d.", slide)
+			m.jumpActive = false
+			m.jumpDigits = ""
+		}
+	case "backspace", "ctrl+h":
+		if len(m.jumpDigits) > 0 {
+			m.jumpDigits = m.jumpDigits[:len(m.jumpDigits)-1]
+		}
+	default:
+		if len(value) == 1 && value[0] >= '0' && value[0] <= '9' && len(m.jumpDigits) < 6 {
+			m.jumpDigits += value
+			m.status = ""
+		}
+	}
+	return m, nil
+}
+
 func (m *model) View() string {
 	header := heading.Render("CULTO") + "  " + muted.Render("liturgia e projeção")
 	var body string
@@ -416,6 +462,9 @@ func (m *model) View() string {
 		body = "\n" + m.inputPrompt + "\n\n" + m.input.View()
 	case previewScreen:
 		body = m.preview.View()
+	}
+	if m.jumpActive {
+		body += "\n\n" + muted.Render("Ir para slide: "+m.jumpDigits+"▏")
 	}
 	if m.status != "" {
 		body += "\n" + problem.Render(m.status)
@@ -431,7 +480,10 @@ func (m *model) help() string {
 	case inputScreen:
 		return "Enter confirmar · Esc cancelar"
 	case previewScreen:
-		return "↑/↓ rolar · p projetar · e editar música · Esc voltar"
+		if m.jumpActive {
+			return "Digite o número · Enter ir · Backspace apagar · Esc cancelar"
+		}
+		return "↑/↓ rolar · p projetar · g ir para slide · e editar música · Esc voltar"
 	default:
 		return ""
 	}

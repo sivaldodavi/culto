@@ -107,3 +107,49 @@ func TestSongListHasAddAndBackActions(t *testing.T) {
 		t.Fatalf("segundo item não é voltar: %#v", items[1])
 	}
 }
+
+func TestSlideJumpStaysOnPreviewAndSendsNumberToSent(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "xdotool-args")
+	xdotool := filepath.Join(dir, "xdotool")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = search ]; then printf '4242\\n'; exit 0; fi\n" +
+		"printf '%s\\n' \"$@\" > \"$CULTO_TEST_XDOTOOL_ARGS\"\n"
+	if err := os.WriteFile(xdotool, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("CULTO_TEST_XDOTOOL_ARGS", argsFile)
+
+	m := New(culto.Config{}).(*model)
+	m.showPreview("HINO\n\nESTROFE")
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	if m.screen != previewScreen || !m.jumpActive || m.jumpDigits != "12" {
+		t.Fatal("entrada do número trocou a tela de projeção")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.screen != previewScreen || m.jumpActive {
+		t.Fatal("após o salto, a tela de projeção não foi mantida")
+	}
+	got, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "key\n--window\n4242\n--clearmodifiers\ng\n1\n2\nReturn\n"
+	if string(got) != want {
+		t.Fatalf("sequência enviada ao sent:\n%s\nesperado:\n%s", got, want)
+	}
+}
+
+func TestSlideJumpCanBeCancelledWithoutLeavingPreview(t *testing.T) {
+	m := New(culto.Config{}).(*model)
+	m.showPreview("SLIDE")
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.screen != previewScreen || m.jumpActive || m.jumpDigits != "" {
+		t.Fatal("cancelar o salto alterou a tela ou manteve o número digitado")
+	}
+}

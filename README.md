@@ -1,6 +1,6 @@
 # Culto
 
-TUI em Go para organizar a liturgia, consultar a Bíblia e projetar slides usando `sent`. A aplicação mantém compatibilidade com `biblia.json` e `musicas.json` usados pelo script Bash `~/.local/bin/culto`; esse script não é alterado.
+TUI em Go para organizar a liturgia, consultar a Bíblia e projetar slides usando `sent`. A aplicação mantém compatibilidade com `biblia.json` e `musicas.json` usados pelo script Bash anterior, arquivado em `legacy/culto.sh`. O comando `culto` do Bash executa esta TUI por meio da função configurada em `~/.bashrc`.
 
 ## Requisitos
 
@@ -45,7 +45,9 @@ Sobrescritas específicas: `CULTO_BIBLE_FILE`, `CULTO_MUSIC_FILE`, `CULTO_PIX_FI
 
 - **↑/↓** navega; **/** filtra; **Enter** seleciona.
 - **Esc** volta; **q** volta ou sai do menu inicial.
-- Na visualização, **p** projeta; em músicas, **e** abre o Vim/Neovim.
+- Na visualização, **p** projeta e **g** permite digitar o número do slide e saltar diretamente no `sent`, sem sair da tela. **Esc** cancela a entrada.
+- A visualização indica o número de cada slide; use esse número depois de apertar **g**.
+- Em músicas, **e** abre o Vim/Neovim.
 - No editor, use `:wq` para salvar e sair; `:q!` para descartar.
 - **Ctrl+C** encerra a interface.
 
