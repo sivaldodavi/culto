@@ -154,6 +154,41 @@ func TestSlideJumpCanBeCancelledWithoutLeavingPreview(t *testing.T) {
 	}
 }
 
+func TestPreviewArrowKeysMoveSentSlideWithoutLeavingPreview(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "xdotool-args")
+	xdotool := filepath.Join(dir, "xdotool")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = search ]; then printf '4242\\n'; exit 0; fi\n" +
+		"printf '%s\\n' \"$@\" >> \"$CULTO_TEST_XDOTOOL_ARGS\"\n"
+	if err := os.WriteFile(xdotool, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("CULTO_TEST_XDOTOOL_ARGS", argsFile)
+
+	m := New(culto.Config{}).(*model)
+	m.showPreview("HINO\n\nESTROFE")
+	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	if m.screen != previewScreen || m.status != "Slide anterior enviado ao sent." {
+		t.Fatalf("atalho de slide anterior inesperado: tela=%v status=%q", m.screen, m.status)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if m.screen != previewScreen || m.status != "Slide seguinte enviado ao sent." {
+		t.Fatalf("atalho de slide seguinte inesperado: tela=%v status=%q", m.screen, m.status)
+	}
+
+	got, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "key\n--window\n4242\n--clearmodifiers\nLeft\n" +
+		"key\n--window\n4242\n--clearmodifiers\nRight\n"
+	if string(got) != want {
+		t.Fatalf("teclas enviadas ao sent:\n%s\nesperado:\n%s", got, want)
+	}
+}
+
 func TestCtrlLClearsProjectionWithoutLeavingCurrentScreen(t *testing.T) {
 	for _, screenName := range []string{"menu", "input", "preview"} {
 		t.Run(screenName, func(t *testing.T) {

@@ -32,18 +32,9 @@ func JumpToSlide(slide int) error {
 	if err != nil {
 		return fmt.Errorf("xdotool não foi encontrado")
 	}
-	output, err := exec.Command(xdotool, "search", "--onlyvisible", "--class", "sent").Output()
+	window, err := findSentWindow(xdotool)
 	if err != nil {
-		return fmt.Errorf("não encontrei uma janela visível do sent")
-	}
-	windows := strings.Fields(string(output))
-	if len(windows) == 0 {
-		return fmt.Errorf("não encontrei uma janela visível do sent")
-	}
-
-	window := windows[0]
-	if _, err := strconv.ParseUint(window, 10, 64); err != nil {
-		return fmt.Errorf("o identificador da janela do sent é inválido")
+		return err
 	}
 	args := []string{"key", "--window", window, "--clearmodifiers", "g"}
 	for _, digit := range strconv.Itoa(slide) {
@@ -54,6 +45,46 @@ func JumpToSlide(slide int) error {
 		return fmt.Errorf("não foi possível enviar o salto para o slide %d: %w", slide, err)
 	}
 	return nil
+}
+
+func MoveSlide(direction int) error {
+	key := ""
+	switch direction {
+	case -1:
+		key = "Left"
+	case 1:
+		key = "Right"
+	default:
+		return fmt.Errorf("a direção do slide deve ser -1 ou 1")
+	}
+	xdotool, err := exec.LookPath("xdotool")
+	if err != nil {
+		return fmt.Errorf("xdotool não foi encontrado")
+	}
+	window, err := findSentWindow(xdotool)
+	if err != nil {
+		return err
+	}
+	if err := exec.Command(xdotool, "key", "--window", window, "--clearmodifiers", key).Run(); err != nil {
+		return fmt.Errorf("não foi possível avançar ou voltar o slide: %w", err)
+	}
+	return nil
+}
+
+func findSentWindow(xdotool string) (string, error) {
+	output, err := exec.Command(xdotool, "search", "--onlyvisible", "--class", "sent").Output()
+	if err != nil {
+		return "", fmt.Errorf("não encontrei uma janela visível do sent")
+	}
+	windows := strings.Fields(string(output))
+	if len(windows) == 0 {
+		return "", fmt.Errorf("não encontrei uma janela visível do sent")
+	}
+	window := windows[0]
+	if _, err := strconv.ParseUint(window, 10, 64); err != nil {
+		return "", fmt.Errorf("o identificador da janela do sent é inválido")
+	}
+	return window, nil
 }
 
 func formatSlides(content string) string {

@@ -400,6 +400,19 @@ func (m *model) updatePreview(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.jumpDigits = ""
 			m.status = ""
 			return m, nil
+		case "left", "right":
+			direction := 1
+			directionName := "seguinte"
+			if key.String() == "left" {
+				direction = -1
+				directionName = "anterior"
+			}
+			if err := culto.MoveSlide(direction); err != nil {
+				m.status = err.Error()
+			} else {
+				m.status = "Slide " + directionName + " enviado ao sent."
+			}
+			return m, nil
 		case "p":
 			if err := culto.Present(m.config, m.content); err != nil {
 				m.status = err.Error()
@@ -494,7 +507,7 @@ func (m *model) help() string {
 		if m.jumpActive {
 			return "Digite o número · Enter ir · Backspace apagar · Esc cancelar" + global
 		}
-		return "↑/↓ rolar · p projetar · g ir para slide · e editar música · Esc voltar" + global
+		return "←/→ slide anterior/seguinte · ↑/↓ rolar · p projetar · g ir para slide · e editar música · Esc voltar" + global
 	default:
 		return ""
 	}
