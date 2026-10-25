@@ -53,7 +53,7 @@ Sobrescritas específicas: `CULTO_BIBLE_FILE`, `CULTO_MUSIC_FILE`, `CULTO_PIX_FI
 - No editor, use `:wq` para salvar e sair; `:q!` para descartar.
 - **Ctrl+C** encerra a interface.
 
-Na visualização de uma música, cada parte é identificada com o número do slide e o número da estrofe. Se houver uma capa automática (hinos e salmos), ela aparece como slide 01 e a primeira estrofe como slide 02. Esses rótulos são apenas informativos e não aparecem na projeção.
+Na visualização de uma música, cada parte é identificada com o número do slide e o número da estrofe. Se houver uma capa automática (hinos e salmos), ela aparece como slide 01 e a primeira estrofe como slide 02. Esses rótulos são apenas informativos e não aparecem na projeção. Ao editar a letra com **e**, cada alteração é enviada automaticamente à projeção enquanto o editor está aberto; a música continua sendo salva no arquivo JSON ao sair do editor. Se sair com `:q!`, a edição é descartada e a projeção volta à letra original.
 
 O menu inicial fica centralizado e evita repetir ações já acessíveis por atalhos globais. Erros aparecem na prévia, mas não podem ser enviados à projeção.
 

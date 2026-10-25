@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"culto/internal/culto"
 	tea "github.com/charmbracelet/bubbletea"
@@ -113,6 +114,82 @@ func TestFinishEditorSavesLyricsAndReturnsToSongList(t *testing.T) {
 	}
 	if _, err := os.Stat(editFile); !os.IsNotExist(err) {
 		t.Fatal("arquivo temporário do editor não foi removido")
+	}
+}
+
+func TestSongEditorChangesReachProjectionBeforeEditorCloses(t *testing.T) {
+	dir := t.TempDir()
+	xdotool := filepath.Join(dir, "xdotool")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = search ]; then printf '4242\\n'; fi\n"
+	if err := os.WriteFile(xdotool, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	title := "Cântico ao vivo"
+	original := songEditorText(title, []string{"Letra antiga"})
+	liveFile := filepath.Join(dir, "live.md")
+	sentFile := filepath.Join(dir, "slides")
+	if err := os.WriteFile(liveFile, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stop := watchSongProjection(culto.Config{SentFile: sentFile}, liveFile, title, original)
+	defer stop()
+
+	edited := songEditorText(title, []string{"Primeira estrofe", "Segunda estrofe"})
+	if err := os.WriteFile(liveFile, []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		projected, err := os.ReadFile(sentFile)
+		if err == nil && strings.Contains(string(projected), "SEGUNDA ESTROFE") {
+			if got, want := string(projected), "PRIMEIRA ESTROFE\n\nSEGUNDA ESTROFE\n"; got != want {
+				t.Fatalf("letra projetada = %q, esperado %q", got, want)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("a letra editada não chegou à projeção antes de fechar o editor")
+}
+
+func TestDiscardedSongEditRestoresProjection(t *testing.T) {
+	dir := t.TempDir()
+	xdotool := filepath.Join(dir, "xdotool")
+	if err := os.WriteFile(xdotool, []byte("#!/bin/sh\nif [ \"$1\" = search ]; then printf '4242\\n'; fi\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	title := "Cântico descartado"
+	original := songEditorText(title, []string{"Letra original"})
+	editorFile := filepath.Join(dir, "editor.md")
+	liveFile := filepath.Join(dir, "live.md")
+	sentFile := filepath.Join(dir, "slides")
+	if err := os.WriteFile(editorFile, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(liveFile, []byte(songEditorText(title, []string{"Letra temporária"})), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := New(culto.Config{SentFile: sentFile}).(*model)
+	m.finishEditor(editorFinishedMsg{
+		title: title, path: editorFile, livePath: liveFile, original: original,
+	})
+
+	projected, err := os.ReadFile(sentFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(projected), "LETRA ORIGINAL\n"; got != want {
+		t.Fatalf("projeção após descartar = %q, esperado %q", got, want)
+	}
+	if m.status != "Edição descartada; projeção restaurada." {
+		t.Fatalf("status após descartar: %q", m.status)
 	}
 }
 
